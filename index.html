@@ -15,6 +15,25 @@
             transition: transform 0.2s;
             box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
         " onmouseover="this.style.transform='scale(1.1)'" onmouseout="this.style.transform='scale(1)'">暂停</button>
+
+        <!-- 新增：用于显示关卡提示的元素 -->
+        <div id="levelIndicator" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: white; font-size: 36px; font-weight: bold; text-shadow: 2px 2px 4px rgba(0,0,0,0.7); z-index: 1001; display: none; pointer-events: none; background-color: rgba(0, 0, 0, 0.5); padding: 20px; border-radius: 10px;"></div>
     </div>
-    <script src="script.js"></script>
+    
+    <!-- 配置文件 -->
+    <script src="js/config.js"></script>
+    <!-- 资源文件 -->
+    <script src="js/assets.js"></script>
+    <!-- 全局变量 -->
+    <script src="js/globals.js"></script> <!-- keys 在这里定义 -->
+    <!-- 类定义 -->
+    <script src="js/classes/bullet.js"></script>
+    <script src="js/classes/enemy_bullet.js"></script>
+    <script src="js/classes/powerup.js"></script>
+    <script src="js/classes/player.js"></script>
+    <script src="js/classes/enemy.js"></script>
+    <!-- 游戏逻辑 -->
+    <script src="js/game.js"></script>
+    <!-- 主入口和事件监听 -->
+    <script src="js/main.js"></script>
 </body>
