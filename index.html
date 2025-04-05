@@ -1,0 +1,20 @@
+<body style="margin: 0; background-color: #000; display: flex; justify-content: center; align-items: center; height: 100vh; overflow: hidden;">
+    <div style="position: relative; width: 300px; height: 800px;">
+        <canvas id="gameCanvas" style="border-radius: 10px; box-shadow: 0 0 20px rgba(0, 100, 255, 0.3);"></canvas>
+        <button id="pauseButton" style="
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            padding: 8px 16px;
+            font-size: 16px;
+            background: linear-gradient(45deg, #4444ff, #44aaff);
+            border: none;
+            border-radius: 20px;
+            color: white;
+            cursor: pointer;
+            transition: transform 0.2s;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+        " onmouseover="this.style.transform='scale(1.1)'" onmouseout="this.style.transform='scale(1)'">暂停</button>
+    </div>
+    <script src="script.js"></script>
+</body>
