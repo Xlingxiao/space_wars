@@ -175,29 +175,21 @@ class Player {
         this.y = y;
         this.width = 50;
         this.height = 50;
-        this.speed = 5;
-        this.baseSpeed = 5;
-        this.normalShootingSpeed = 350;
-        this.missileShootingSpeed = 700;
+        // Base shooting intervals (will be decreased at level 13+)
+        this.baseNormalShootingSpeed = 350;
+        this.baseMissileShootingSpeed = 500;
+        // Current shooting intervals
+        this.normalShootingSpeed = this.baseNormalShootingSpeed;
+        this.missileShootingSpeed = this.baseMissileShootingSpeed;
         this.lastNormalShot = 0;
         this.lastMissileShot = 0;
+        this.lastDiagonalShot = 0; // Timer for diagonal bullets
+        this.speed = 5;
         this.engineFlame = 0;
         this.wingAngle = 0;
-        this.isInvincible = false; // 新增无敌状态
-        this.invincibleTimer = 0; // 无敌计时器
-        this.blinkInterval = 0; // 闪烁间隔
-        this.x = x;
-        this.y = y;
-        this.width = 50;
-        this.height = 50;
-        this.speed = 5;
-        this.baseSpeed = 5;
-        this.normalShootingSpeed = 350; // 普通子弹射速
-        this.missileShootingSpeed = 700; // 导弹射速（普通子弹的一半）
-        this.lastNormalShot = 0;
-        this.lastMissileShot = 0;
-        this.engineFlame = 0;
-        this.wingAngle = 0; // 添加机翼动画
+        this.isInvincible = false;
+        this.invincibleTimer = 0;
+        this.blinkInterval = 0;
     }
 
     draw() {
@@ -402,94 +394,154 @@ class Player {
         // 调整边界检测以适应新的竖屏尺寸
         if (keys['ArrowUp'] && this.y > 0) this.y -= this.speed;
         if (keys['ArrowDown'] && this.y < canvas.height - this.height) this.y += this.speed;
-        if (keys['ArrowLeft'] && this.x > this.width / 2) this.x -= this.speed;
-        if (keys['ArrowRight'] && this.x < canvas.width - this.width / 2) this.x += this.speed;
+        if (keys['ArrowLeft'] && this.x > this.width / 2) this.x -= this.speed; // Corrected boundary check for left
+        if (keys['ArrowRight'] && this.x < canvas.width - this.width / 2) this.x += this.speed; // Corrected boundary check for right
     }
 
     shoot() {
         const now = Date.now();
-        
-        if (gameState.weaponLevel <= 5) {
-            // 普通子弹逻辑
-            if (now - this.lastNormalShot >= this.normalShootingSpeed) {
-                this.lastNormalShot = now;
-                this.createNormalBullets();
+        let normalBulletCount = 0;
+        let missileCount = 0;
+        let diagonalBulletCountPerSide = 0;
+
+        // Determine weapon configuration based on level
+        const level = gameState.weaponLevel;
+        if (level === 1) {
+            normalBulletCount = 1;
+        } else if (level === 2) {
+            normalBulletCount = 2;
+        } else if (level === 3) {
+            normalBulletCount = 3;
+        } else if (level === 4) {
+            normalBulletCount = 4;
+        } else if (level === 5) {
+            normalBulletCount = 5;
+        } else if (level === 6) {
+            normalBulletCount = 5;
+            missileCount = 1;
+        } else if (level === 7) {
+            normalBulletCount = 5;
+            missileCount = 2;
+        } else if (level === 8) {
+            normalBulletCount = 5;
+            missileCount = 3;
+        } else if (level === 9) {
+            normalBulletCount = 5;
+            missileCount = 4;
+        } else if (level === 10) {
+            normalBulletCount = 5;
+            missileCount = 4;
+            diagonalBulletCountPerSide = 1;
+        } else if (level === 11) {
+            normalBulletCount = 5;
+            missileCount = 4;
+            diagonalBulletCountPerSide = 2;
+        } else if (level >= 12) { // Level 12 and above
+            normalBulletCount = 5;
+            missileCount = 4;
+            diagonalBulletCountPerSide = 3;
+            // Speed increase is handled by PowerUp.applyEffect modifying player attributes
+        }
+
+        // Fire normal and diagonal bullets based on normal shooting timer
+        if (now - this.lastNormalShot >= this.normalShootingSpeed) {
+            this.lastNormalShot = now;
+            if (normalBulletCount > 0) {
+                this.createNormalBullets(normalBulletCount);
             }
-        } else {
-            // 同时发射普通子弹和导弹
-            if (now - this.lastNormalShot >= this.normalShootingSpeed) {
-                this.lastNormalShot = now;
-                this.createNormalBullets();
+            if (diagonalBulletCountPerSide > 0) {
+                this.createDiagonalBullets(diagonalBulletCountPerSide);
             }
-            if (now - this.lastMissileShot >= this.missileShootingSpeed) {
-                this.lastMissileShot = now;
-                this.createMissiles();
+             // Play sound only once per volley
+            if (normalBulletCount > 0 || diagonalBulletCountPerSide > 0) {
+                 AudioController.playOneShot(shootSound);
             }
+        }
+
+        // Fire missiles based on missile shooting timer
+        if (missileCount > 0 && now - this.lastMissileShot >= this.missileShootingSpeed) {
+            this.lastMissileShot = now;
+            this.createMissiles(missileCount);
+             // Play sound for missiles
+            AudioController.playOneShot(missileSound);
         }
     }
 
-    createNormalBullets() {
-        const bulletSpread = 10; // 子弹间距
-        const bulletCount = gameState.weaponLevel;
+    createNormalBullets(bulletCount) {
+        const bulletSpread = 15; // Increase spread slightly
         const totalWidth = (bulletCount - 1) * bulletSpread;
         const startX = this.x - totalWidth / 2;
 
         for (let i = 0; i < bulletCount; i++) {
+            // Angle is default (-PI/2, straight up)
             bullets.push(new Bullet(startX + i * bulletSpread, this.y));
-            // 为每颗子弹播放独立的射击音效
-            AudioController.playOneShot(shootSound);
+            // Sound is played once per volley in shoot()
         }
     }
 
-    createMissiles() {
-        const bulletSpread = 10; // 子弹间距
-        const missileSpread = 20; // 导弹间距
-        const missileCount = gameState.weaponLevel - 5;
-        const bulletCount = 3; // 固定3颗普通子弹
+    createDiagonalBullets(countPerSide) {
+        const angleOffset = Math.PI / 8; // Angle for diagonal shots (adjust as needed)
+        const bulletSpread = 10; // Spread for diagonal bullets
 
-        // 发射普通子弹
-        const bulletTotalWidth = (bulletCount - 1) * bulletSpread;
-        const bulletStartX = this.x - bulletTotalWidth / 2;
-        for (let i = 0; i < bulletCount; i++) {
-            bullets.push(new Bullet(bulletStartX + i * bulletSpread, this.y));
-            // 为每颗普通子弹播放独立的射击音效
-            AudioController.playOneShot(shootSound);
+        // Left diagonal bullets
+        for (let i = 0; i < countPerSide; i++) {
+            const angle = -Math.PI / 2 - angleOffset; // Top-left direction
+            const startX = this.x - this.width * 0.3 - i * bulletSpread; // Offset slightly left
+             bullets.push(new Bullet(startX, this.y, 'normal', null, angle));
         }
 
-        // 发射导弹
-        const missileTotalWidth = (missileCount - 1) * missileSpread;
-        const missileStartX = this.x - missileTotalWidth / 2;
+        // Right diagonal bullets
+        for (let i = 0; i < countPerSide; i++) {
+            const angle = -Math.PI / 2 + angleOffset; // Top-right direction
+            const startX = this.x + this.width * 0.3 + i * bulletSpread; // Offset slightly right
+             bullets.push(new Bullet(startX, this.y, 'normal', null, angle));
+        }
+         // Sound is played once per volley in shoot()
+    }
+
+
+    createMissiles(missileCount) {
+        const missileSpread = 30; // Increase spread for missiles
+        const totalWidth = (missileCount - 1) * missileSpread;
+        // Calculate startX to center the missiles relative to player.x
+        const startX = this.x - totalWidth / 2;
+
         for (let i = 0; i < missileCount; i++) {
-            // 找到最近的敌人作为目标
+            const missileX = startX + i * missileSpread;
+            // Find nearest enemy for target
             let nearestEnemy = null;
             let minDistance = Infinity;
             enemies.forEach(enemy => {
-                const distance = Math.hypot(enemy.x - this.x, enemy.y - this.y);
-                if (distance < minDistance) {
-                    minDistance = distance;
-                    nearestEnemy = enemy;
+                // Ensure enemy is somewhat in front of the player to avoid targeting behind
+                if (enemy.y < this.y) {
+                    const distance = Math.hypot(enemy.x - missileX, enemy.y - this.y);
+                    if (distance < minDistance) {
+                        minDistance = distance;
+                        nearestEnemy = enemy;
+                    }
                 }
             });
-            bullets.push(new Bullet(missileStartX + i * missileSpread, this.y, 'missile', nearestEnemy));
-            // 为每枚导弹播放独立的发射音效
-            AudioController.playOneShot(missileSound);
+            // Angle is determined during update based on target
+            bullets.push(new Bullet(missileX, this.y, 'missile', nearestEnemy));
+            // Sound is played once per volley in shoot()
         }
     }
 }
 
-const player = new Player(canvas.width / 2 - 25, canvas.height - 100);
+const player = new Player(canvas.width / 2, canvas.height - 100); // Centered player
 
 class Bullet {
-    constructor(x, y, type = 'normal', targetEnemy = null) {
-        this.x = x - 2.5;
+    constructor(x, y, type = 'normal', targetEnemy = null, angle = -Math.PI / 2) { // Added angle parameter
+        this.x = x - (type === 'missile' ? 10 : 2.5); // Adjust x offset based on type for centering
         this.y = y;
         this.type = type;
         this.targetEnemy = targetEnemy;
-        this.rotationAngle = 0;
-        this.initialX = x; // 记录初始位置用于绘制弧线
+        this.angle = angle; // Store the angle
+        this.rotationAngle = type === 'missile' ? -Math.PI / 2 : angle; // Initial rotation for drawing
+        this.initialX = x;
         this.initialY = y;
-        this.arcProgress = 0; // 弧线进度
-        
+        this.arcProgress = 0;
+
         if (type === 'normal') {
             this.width = 5;
             this.height = 10;
@@ -499,54 +551,56 @@ class Bullet {
             this.width = 20;
             this.height = 40;
             this.speed = 5;
-            this.damage = 5; // 导弹伤害为普通子弹的10倍
+            this.damage = 5;
             this.turnSpeed = 0.1;
             this.lifetime = 0;
             this.maxLifetime = 200;
+            // Initial rotation set above
         }
     }
 
     draw() {
         // 无敌状态下闪烁效果
-        if (this.isInvincible && this.blinkInterval < 5) {
-            return;
-        }
+        // if (this.isInvincible && this.blinkInterval < 5) { // Bullets don't have isInvincible
+        //     return;
+        // }
         ctx.save();
+        ctx.translate(this.x + this.width / 2, this.y + this.height / 2); // Translate to center for rotation
+        ctx.rotate(this.rotationAngle); // Rotate based on drawing angle
+
+
         if (this.type === 'normal') {
-            // 普通子弹
-            const gradient = ctx.createLinearGradient(this.x, this.y, this.x, this.y + this.height);
+             // Draw centered normal bullet
+            const gradient = ctx.createLinearGradient(0, -this.height/2, 0, this.height/2); // Centered gradient
             gradient.addColorStop(0, '#ffff00');
             gradient.addColorStop(1, '#ff8800');
-            
-            // 新的子弹形状 - 前端尖形，后端平形
             ctx.fillStyle = gradient;
-            
-            // 绘制子弹主体
+
             ctx.beginPath();
-            ctx.moveTo(this.x, this.y + this.height); // 左下角(底部)
-            ctx.lineTo(this.x + this.width, this.y + this.height); // 右下角(底部)
-            ctx.lineTo(this.x + this.width/2, this.y); // 顶部中心点(尖端)
+            ctx.moveTo(-this.width/2, this.height/2);  // Bottom-left
+            ctx.lineTo(this.width/2, this.height/2);   // Bottom-right
+            ctx.lineTo(0, -this.height/2); // Top-center
             ctx.closePath();
             ctx.fill();
-            
-            // 子弹尾焰 - 在底部(平的一端)添加
+
+            // Draw centered tail flame
             ctx.beginPath();
-            ctx.moveTo(this.x, this.y + this.height);
-            ctx.lineTo(this.x + this.width/2, this.y + this.height + 5);
-            ctx.lineTo(this.x + this.width, this.y + this.height);
+            ctx.moveTo(-this.width/2, this.height/2);
+            ctx.lineTo(0, this.height/2 + 5); // Flame point below center
+            ctx.lineTo(this.width/2, this.height/2);
             ctx.fillStyle = '#ff4400';
             ctx.fill();
+
         } else if (this.type === 'missile') {
-            ctx.translate(this.x + this.width/2, this.y + this.height/2);
-            ctx.rotate(this.rotationAngle);
+             // Draw centered missile (original missile draw code assumed translation already happened)
 
             // 导弹主体 - 更改为蓝色系配色方案
             const bodyGradient = ctx.createLinearGradient(0, -this.height/2, 0, this.height/2);
             bodyGradient.addColorStop(0, '#0066cc'); // 深蓝色
             bodyGradient.addColorStop(0.5, '#4488dd'); // 中蓝色
             bodyGradient.addColorStop(1, '#0044aa'); // 深蓝色
-            
-            // 导弹头部
+
+            // 导弹头部 (绘制相对于0,0)
             ctx.beginPath();
             ctx.moveTo(0, -this.height/2);
             ctx.lineTo(this.width/4, -this.height/4);
@@ -557,7 +611,7 @@ class Bullet {
             ctx.closePath();
             ctx.fillStyle = bodyGradient;
             ctx.fill();
-            
+
             // 导弹翼
             ctx.beginPath();
             ctx.moveTo(0, -this.height/4);
@@ -575,7 +629,7 @@ class Bullet {
             flameGradient.addColorStop(0, '#ff4400'); // 深橙色
             flameGradient.addColorStop(0.5, '#ff8800'); // 中橙色
             flameGradient.addColorStop(1, 'rgba(255, 255, 0, 0)'); // 淡黄色渐变至透明
-            
+
             ctx.fillStyle = flameGradient;
             ctx.beginPath();
             ctx.moveTo(-this.width/4, this.height/2);
@@ -588,6 +642,7 @@ class Bullet {
             ctx.shadowColor = '#66aaff';
             ctx.shadowBlur = 10;
             ctx.beginPath();
+            // Draw arc relative to 0,0 since we translated
             ctx.arc(0, 0, this.width/2, 0, Math.PI * 2);
             ctx.fillStyle = 'rgba(50, 150, 255, 0.2)'; // 半透明的蓝色光晕
             ctx.fill();
@@ -595,35 +650,50 @@ class Bullet {
         ctx.restore();
     }
 
+
     update() {
-        // 更新无敌状态
-        if (this.isInvincible) {
-            this.invincibleTimer++;
-            this.blinkInterval = (this.blinkInterval + 1) % 10;
-            
-            if (this.invincibleTimer >= 120) { // 2秒无敌时间(60fps)
-                this.isInvincible = false;
-                this.invincibleTimer = 0;
-            }
-        }
         if (this.type === 'normal') {
-            this.y -= this.speed;
+            // Move based on the stored angle
+            this.x += Math.cos(this.angle) * this.speed;
+            this.y += Math.sin(this.angle) * this.speed;
+            this.rotationAngle = this.angle + Math.PI/2; // Keep drawing angle aligned with movement angle (add PI/2 because 0 angle is right, -PI/2 is up)
         } else if (this.type === 'missile') {
             this.lifetime++;
-            
-            if (!this.targetEnemy || this.targetEnemy.health <= 0) {
-                // 没有目标时，按照正常子弹的轨迹运行（直线向上）
-                this.y -= this.speed;
-                this.rotationAngle = -Math.PI/2; // 保持向上的方向（竖直方向）
+
+            // Check if target exists and is alive
+            const targetIsValid = this.targetEnemy && this.targetEnemy.health > 0 && enemies.includes(this.targetEnemy);
+
+            if (!targetIsValid || this.lifetime > this.maxLifetime / 2) { // Start going straight if target lost or half lifetime passed
+                // No target or target lost, fly straight up from current direction
+                const straightAngle = -Math.PI / 2;
+                 // Smoothly transition angle towards straight up
+                const angleDiff = straightAngle - this.angle;
+                 // Normalize angle difference
+                const normalizedDiff = Math.atan2(Math.sin(angleDiff), Math.cos(angleDiff));
+                this.angle += normalizedDiff * this.turnSpeed * 0.5; // Slower turn towards straight
+
+
+                this.x += Math.cos(this.angle) * this.speed;
+                this.y += Math.sin(this.angle) * this.speed;
+                this.rotationAngle = this.angle + Math.PI / 2; // Update drawing rotation based on movement angle
             } else {
-                // 正常追踪目标
-                const dx = this.targetEnemy.x - this.x;
-                const dy = this.targetEnemy.y - this.y;
-                const angle = Math.atan2(dy, dx);
-                this.rotationAngle = angle + Math.PI/2;
-                
-                this.x += Math.cos(angle) * this.speed;
-                this.y += Math.sin(angle) * this.speed;
+                // Normal tracking
+                const dx = this.targetEnemy.x + this.targetEnemy.width/2 - (this.x + this.width/2); // Target center
+                const dy = this.targetEnemy.y + this.targetEnemy.height/2 - (this.y + this.height/2); // Target center
+                const targetAngle = Math.atan2(dy, dx);
+
+                // Smoothly adjust missile angle towards target angle
+                const angleDiff = targetAngle - this.angle;
+                // Normalize the angle difference to the range [-PI, PI]
+                const normalizedDiff = Math.atan2(Math.sin(angleDiff), Math.cos(angleDiff));
+
+                // Adjust angle, limit turn speed
+                this.angle += Math.max(-this.turnSpeed, Math.min(this.turnSpeed, normalizedDiff));
+
+                // Move missile based on its current angle
+                this.x += Math.cos(this.angle) * this.speed;
+                this.y += Math.sin(this.angle) * this.speed;
+                this.rotationAngle = this.angle + Math.PI / 2; // Update drawing rotation based on movement angle
             }
         }
     }
@@ -634,89 +704,125 @@ class Enemy {
         this.x = x;
         this.y = y;
         this.type = type;
-        this.width = type === 'boss' ? 200 : 50;  // BOSS尺寸翻倍
-        this.height = type === 'boss' ? 200 : 50; // BOSS尺寸翻倍
-        
-        // 从静态属性或原型属性获取生命值，如果不存在则使用默认值
-        if (type === 'boss') {
-            this.health = Enemy.prototype.bossBaseHealth || 100; // BOSS的初始生命值
-            this.maxHealth = Enemy.prototype.bossBaseHealth || 100;
+        this.width = type === 'boss' ? 200 : 50;
+        this.height = type === 'boss' ? 200 : 50;
+
+        // --- Linear Time Difficulty Calculation --- START ---
+        const BOSS_SPAWN_TIME_SECONDS = 30; // Time in seconds until boss potentially spawns
+        const TIME_DIFFICULTY_TARGET_FACTOR = 1.5; // Target factor increase within the level (1.5 means 50% increase)
+
+        const levelTimeSeconds = (Date.now() - gameState.levelStartTime) / 1000;
+        let timeDifficultyFactor;
+        if (levelTimeSeconds <= BOSS_SPAWN_TIME_SECONDS) {
+            // Linear increase from 1.0 up to TIME_DIFFICULTY_TARGET_FACTOR over BOSS_SPAWN_TIME_SECONDS
+            timeDifficultyFactor = 1 + ((TIME_DIFFICULTY_TARGET_FACTOR - 1) * levelTimeSeconds / BOSS_SPAWN_TIME_SECONDS);
         } else {
-            this.health = Enemy.prototype.baseHealth || 1; // 普通敌人的初始生命值
-            this.maxHealth = Enemy.prototype.baseHealth || 1;
+            // After boss spawn time, cap at the target factor
+            timeDifficultyFactor = TIME_DIFFICULTY_TARGET_FACTOR;
         }
-        
-        this.speed = this.getSpeed();
+        // --- Linear Time Difficulty Calculation --- END ---
+
+        // 计算最终难度因子 = 关卡基础难度 * 时间难度
+        const finalDifficulty = gameState.difficulty * timeDifficultyFactor;
+        const finalSpeedFactor = enemySpeedFactor * timeDifficultyFactor; // 速度也受时间影响
+
+        // 根据最终难度设置生命值
+        if (type === 'boss') {
+            // Boss 血量主要由关卡决定，时间影响较小或不影响，避免 Boss 过于难打
+            const bossBaseHealth = 1000; // Boss 基础血量固定值 (之前误写为100)
+            this.health = Math.ceil(bossBaseHealth * gameState.difficulty); // 主要受关卡影响
+            this.maxHealth = this.health;
+        } else if (type === 'fast') {
+            const fastBaseHealth = 1; // 快速敌人基础血量
+            this.health = Math.ceil(fastBaseHealth * finalDifficulty * 0.8); // 比普通敌人血少点
+            this.maxHealth = this.health;
+        }
+        else { // 'normal' 或未来其他普通类型
+            const normalBaseHealth = 1; // 普通敌人基础血量
+            this.health = Math.ceil(normalBaseHealth * finalDifficulty);
+            this.maxHealth = this.health;
+        }
+
+        this.speed = this.getSpeed(finalSpeedFactor); // 传递最终速度因子
         this.points = this.getPoints();
         this.engineFlame = 0;
-        
-        // BOSS特有属性
+
+        // BOSS特有属性... (保持不变)
         if (type === 'boss') {
             this.state = BOSS_STATES.ENTER;
-            this.targetY = canvas.height / 5; // 固定在屏幕上方1/5位置
+            this.targetY = canvas.height / 5;
             this.moveDirection = 1;
             this.attackTimer = 0;
-            this.attackInterval = 120;
+            this.attackInterval = Math.max(60, 120 - (gameState.level - 1) * 10); // Boss攻击间隔随关卡变快
             this.currentAttack = 0;
             this.bulletPattern = 0;
         }
     }
 
-    getSpeed() {
+    // 修改 getSpeed 以接受速度因子
+    getSpeed(speedFactor = 1) { // 默认因子为1
         switch(this.type) {
-            case 'fast': return 4 * enemySpeedFactor;
-            case 'boss': return 1 * enemySpeedFactor;
-            default: return 2 * enemySpeedFactor;
+            case 'fast': return 4 * speedFactor;
+            case 'boss': return 1 * speedFactor; // Boss 速度也可能受影响
+            default: return 2 * speedFactor;
         }
     }
 
+    // getPoints() ... (分数也随难度增加)
     getPoints() {
         switch(this.type) {
-            case 'fast': return 20;
-            case 'boss': return 50;
-            default: return 10;
+            case 'fast': return 15 * Math.ceil(gameState.difficulty); // 分数也随难度增加
+            case 'boss': return 500 * Math.ceil(gameState.difficulty);
+            default: return 10 * Math.ceil(gameState.difficulty);
         }
     }
 
     draw() {
         // 无敌状态下闪烁效果
-        if (this.isInvincible && this.blinkInterval < 5) {
-            return;
-        }
-        
+        //if (this.isInvincible && this.blinkInterval < 5) { // Enemies don't have isInvincible
+        //    return;
+       // }
+
         if (this.type === 'boss') {
-            this.drawBoss();
-            // 绘制BOSS血条
-            this.drawBossHealthBar();
+             // Correct: Translate happens HERE in the main draw method
+             ctx.save();
+             ctx.translate(this.x + this.width / 2, this.y + this.height / 2);
+             this.drawBoss(); // drawBoss should now draw relative to (0,0)
+             ctx.restore(); // Restore from the translate in this method
+
+             // Health bar is drawn separately, relative to the logical this.x, this.y
+             this.drawBossHealthBar();
         } else {
             ctx.save();
+            // Translate to center of the enemy for rotation/drawing
             ctx.translate(this.x + this.width/2, this.y + this.height/2);
-            this.drawNormalEnemy();
+            this.drawNormalEnemy(); // drawNormalEnemy draws relative to (0,0)
             ctx.restore();
         }
     }
 
     drawBoss() {
-        ctx.save();
-        // 将坐标系统转换到BOSS的中心位置
-        ctx.translate(this.x + this.width/2, this.y + this.height/2);
-        
-        // Boss主体 - 六边形装甲
+        // *** REMOVE redundant save/translate here ***
+        // ctx.save();
+        // ctx.translate(this.x + this.width/2, this.y + this.height/2); // REMOVED - This caused double translation
+
+        // Boss主体 - 六边形装甲 (Draw relative to 0,0 as context is already translated)
         for (let i = 0; i < 6; i++) {
             ctx.save();
             ctx.rotate(i * Math.PI / 3);
-            
+
             // 装甲板渐变
             const armorGradient = ctx.createLinearGradient(
-                -this.width/2, 0,
+                -this.width/2, 0, // Use relative coordinates
                 this.width/2, 0
             );
             armorGradient.addColorStop(0, '#880088');
             armorGradient.addColorStop(0.5, '#ff44ff');
             armorGradient.addColorStop(1, '#880088');
-            
+
             ctx.fillStyle = armorGradient;
             ctx.beginPath();
+            // Use relative coordinates
             ctx.moveTo(0, -this.height/2);
             ctx.lineTo(this.width/3, 0);
             ctx.lineTo(0, this.height/2);
@@ -728,27 +834,29 @@ class Enemy {
             ctx.strokeStyle = '#ffffff';
             ctx.lineWidth = 2;
             ctx.beginPath();
+             // Use relative coordinates
             ctx.moveTo(-this.width/4, -this.height/4);
             ctx.lineTo(this.width/4, -this.height/4);
             ctx.moveTo(-this.width/4, this.height/4);
             ctx.lineTo(this.width/4, this.height/4);
             ctx.stroke();
+
             ctx.restore();
         }
 
-        // 能量核心
+        // 能量核心 (Draw relative to 0,0)
         const coreGradient = ctx.createRadialGradient(0, 0, 0, 0, 0, this.width/3);
         coreGradient.addColorStop(0, '#ffffff');
         coreGradient.addColorStop(0.3, '#ff88ff');
         coreGradient.addColorStop(0.6, '#ff44ff');
         coreGradient.addColorStop(1, '#880088');
-        
+
         ctx.fillStyle = coreGradient;
         ctx.beginPath();
         ctx.arc(0, 0, this.width/3, 0, Math.PI * 2);
         ctx.fill();
 
-        // 能量波动效果
+        // 能量波动效果 (Draw relative to 0,0)
         ctx.globalAlpha = 0.5 + Math.sin(Date.now() / 200) * 0.3;
         ctx.beginPath();
         ctx.arc(0, 0, this.width/3 + Math.sin(Date.now() / 100) * 5, 0, Math.PI * 2);
@@ -757,10 +865,11 @@ class Enemy {
         ctx.stroke();
         ctx.globalAlpha = 1;
 
-        // Boss发动机效果
+        // Boss发动机效果 (drawBossEngines already draws relative to 0,0)
         this.drawBossEngines();
-        
-        ctx.restore();
+
+        // *** REMOVE redundant restore here ***
+        // ctx.restore(); // REMOVED - Corresponds to the removed save/translate
     }
 
     drawNormalEnemy() {
@@ -768,7 +877,7 @@ class Enemy {
         const mainColor = isfast ? '#ff8800' : '#ff4444';
         const secondaryColor = isfast ? '#ffaa00' : '#ff6666';
 
-        // 机身渐变
+        // 机身渐变 (Draw relative to 0,0)
         const bodyGradient = ctx.createLinearGradient(
             0, -this.height/2,
             0, this.height/2
@@ -819,7 +928,7 @@ class Enemy {
         );
         cockpitGradient.addColorStop(0, 'rgba(255, 255, 255, 0.9)');
         cockpitGradient.addColorStop(1, 'rgba(255, 255, 255, 0.1)');
-        
+
         ctx.fillStyle = cockpitGradient;
         ctx.beginPath();
         ctx.ellipse(0, -this.height * 0.1, this.width * 0.15, this.height * 0.1, 0, 0, Math.PI * 2);
@@ -830,17 +939,18 @@ class Enemy {
     }
 
     drawBossHealthBar() {
+         // Draw health bar relative to the *actual* boss position (this.x, this.y)
         const barWidth = 200;
         const barHeight = 20;
-        const x = this.x + (this.width - barWidth) / 2;
-        const y = this.y - 60; // 将血条上移
+        const x = this.x + (this.width - barWidth) / 2; // Centered horizontally relative to boss
+        const y = this.y - 30; // Position above the boss sprite
 
         // 血条背景
         ctx.fillStyle = 'rgba(255, 0, 0, 0.3)';
         ctx.fillRect(x, y, barWidth, barHeight);
 
         // 当前血量
-        const healthPercentage = this.health / this.maxHealth;
+        const healthPercentage = Math.max(0, this.health / this.maxHealth); // Ensure percentage doesn't go below 0
         ctx.fillStyle = '#ff0000';
         ctx.fillRect(x, y, barWidth * healthPercentage, barHeight);
 
@@ -853,10 +963,11 @@ class Enemy {
         ctx.fillStyle = '#ffffff';
         ctx.font = '16px Arial';
         ctx.textAlign = 'center';
-        ctx.fillText(`${this.health}/${this.maxHealth}`, x + barWidth/2, y + barHeight/2 + 5);
+        ctx.textBaseline = 'middle'; // Align text vertically
+        ctx.fillText(`${Math.max(0, this.health)}/${this.maxHealth}`, x + barWidth/2, y + barHeight/2);
     }
 
-    drawBossEngines() {
+     drawBossEngines() {
         const enginePositions = [
             {x: -this.width * 0.4, y: 0},
             {x: this.width * 0.4, y: 0},
@@ -865,7 +976,7 @@ class Enemy {
         ];
 
         enginePositions.forEach(pos => {
-            // 发动机外壳
+            // 发动机外壳 (Draw relative to 0,0)
             ctx.fillStyle = '#660066';
             ctx.beginPath();
             ctx.arc(pos.x, pos.y, this.width * 0.1, 0, Math.PI * 2);
@@ -878,7 +989,7 @@ class Enemy {
             );
             engineGlow.addColorStop(0, '#ff88ff');
             engineGlow.addColorStop(1, 'rgba(255, 136, 255, 0)');
-            
+
             ctx.fillStyle = engineGlow;
             ctx.beginPath();
             ctx.arc(pos.x, pos.y, this.width * 0.15, 0, Math.PI * 2);
@@ -886,12 +997,12 @@ class Enemy {
         });
     }
 
-    drawEnemyEngines() {
+     drawEnemyEngines() {
         this.engineFlame = (this.engineFlame + 1) % 12;
         const flameHeight = 15 + this.engineFlame + Math.random() * 5;
 
         [-this.width * 0.2, this.width * 0.2].forEach(x => {
-            // 发动机外壳
+            // 发动机外壳 (Draw relative to 0,0)
             ctx.fillStyle = '#333333';
             ctx.beginPath();
             ctx.arc(x, this.height * 0.4, this.width * 0.08, 0, Math.PI * 2);
@@ -905,7 +1016,7 @@ class Enemy {
             flameGradient.addColorStop(0, '#ff8844');
             flameGradient.addColorStop(0.5, '#ffaa44');
             flameGradient.addColorStop(1, 'rgba(255, 255, 255, 0.1)');
-            
+
             ctx.fillStyle = flameGradient;
             ctx.beginPath();
             ctx.moveTo(x - this.width * 0.06, this.height * 0.4);
@@ -924,15 +1035,15 @@ class Enemy {
 
     update() {
         // 更新无敌状态
-        if (this.isInvincible) {
+       /* if (this.isInvincible) { // Enemies don't have invincibility state
             this.invincibleTimer++;
             this.blinkInterval = (this.blinkInterval + 1) % 10;
-            
+
             if (this.invincibleTimer >= 120) { // 2秒无敌时间(60fps)
                 this.isInvincible = false;
                 this.invincibleTimer = 0;
             }
-        }
+        }*/
         if (this.type === 'boss') {
             this.updateBoss();
         } else {
@@ -943,7 +1054,7 @@ class Enemy {
     updateBoss() {
         // 确保目标位置始终是屏幕上方1/5
         this.targetY = canvas.height / 5;
-        
+
         switch (this.state) {
             case BOSS_STATES.ENTER:
                 // 入场动画
@@ -958,7 +1069,7 @@ class Enemy {
             case BOSS_STATES.IDLE:
                 // 在上方区域左右移动
                 this.x += this.speed * this.moveDirection;
-                
+
                 // 确保BOSS不会超出屏幕边界
                 if (this.x <= 0) {
                     this.x = 0;
@@ -967,10 +1078,10 @@ class Enemy {
                     this.x = canvas.width - this.width;
                     this.moveDirection = -1;
                 }
-                
+
                 // 确保BOSS始终保持在目标Y位置
-                this.y = this.targetY;
-                
+                //this.y = this.targetY; // Let's allow slight vertical drift if needed, re-evaluate if problematic
+
                 // 攻击计时
                 this.attackTimer++;
                 if (this.attackTimer >= this.attackInterval) {
@@ -984,71 +1095,82 @@ class Enemy {
             case BOSS_STATES.ATTACK1:
             case BOSS_STATES.ATTACK2:
             case BOSS_STATES.ATTACK3:
-                // 在攻击状态下仍然保持在固定Y位置
-                this.y = this.targetY;
-                
-                // 执行攻击
-                if (this.state === BOSS_STATES.ATTACK1) {
-                    this.fireBulletPattern1();
-                } else if (this.state === BOSS_STATES.ATTACK2) {
-                    this.fireBulletPattern2();
-                } else if (this.state === BOSS_STATES.ATTACK3) {
-                    this.fireBulletPattern3();
-                }
-                
-                // 攻击完毕后回到IDLE状态
-                this.state = BOSS_STATES.IDLE;
+                // 在攻击状态下仍然保持在固定Y位置 (optional, allow movement if desired)
+                //this.y = this.targetY;
+
+                // 执行攻击 (Fire only once per state entry)
+                 if (this.attackTimer === 0) { // Assuming attackTimer resets when entering attack state
+                     if (this.state === BOSS_STATES.ATTACK1) {
+                         this.fireBulletPattern1();
+                     } else if (this.state === BOSS_STATES.ATTACK2) {
+                         this.fireBulletPattern2();
+                     } else if (this.state === BOSS_STATES.ATTACK3) {
+                         this.fireBulletPattern3();
+                     }
+                 }
+                 this.attackTimer++; // Increment timer within attack state
+
+                // 攻击完毕后回到IDLE状态 (Transition after a short delay or based on timer?)
+                // Simple transition back immediately after firing for now:
+                 if (this.attackTimer > 10) { // Short delay after firing before going back to idle
+                    this.state = BOSS_STATES.IDLE;
+                     this.attackTimer = 0; // Reset timer for idle phase
+                 }
                 break;
         }
     }
 
-    fireBulletPattern1() {
+     fireBulletPattern1() {
         // 圆形弹幕
-        const bulletCount = 12;
+        const bulletCount = 12 + Math.floor(gameState.difficulty); // Scale count slightly with difficulty
         for (let i = 0; i < bulletCount; i++) {
             const angle = (i / bulletCount) * Math.PI * 2;
             const bullet = new EnemyBullet(
                 this.x + this.width/2,
                 this.y + this.height/2,
-                Math.cos(angle) * 4,
-                Math.sin(angle) * 4,
+                Math.cos(angle) * (3 + gameState.difficulty * 0.5), // Scale speed slightly
+                Math.sin(angle) * (3 + gameState.difficulty * 0.5),
                 'circle'
             );
             enemyBullets.push(bullet);
         }
+         AudioController.playOneShot(hitSound); // Boss shoot sound (placeholder)
     }
 
-    fireBulletPattern2() {
+     fireBulletPattern2() {
         // 追踪导弹
-        const bulletCount = 3;
+        const bulletCount = 2 + Math.floor(gameState.difficulty / 2); // Scale count slightly
         for (let i = 0; i < bulletCount; i++) {
             const bullet = new EnemyBullet(
-                this.x + this.width/2 - 10 + i * 20,
+                this.x + this.width/2 - 10 + i * (40 / bulletCount), // Adjust spacing
                 this.y + this.height,
                 0,
-                3,
+                (2 + gameState.difficulty * 0.3), // Scale speed slightly
                 'tracking'
             );
             enemyBullets.push(bullet);
         }
+        AudioController.playOneShot(missileSound); // Boss missile sound (placeholder)
     }
 
-    fireBulletPattern3() {
+     fireBulletPattern3() {
         // 散射攻击
-        const bulletCount = 5;
-        const spreadAngle = Math.PI / 4; // 45度散射角
+        const bulletCount = 4 + Math.floor(gameState.difficulty); // Scale count slightly
+        const spreadAngle = Math.PI / 4 + (gameState.difficulty -1)* 0.1; // Widen spread slightly
         for (let i = 0; i < bulletCount; i++) {
             const angle = -spreadAngle/2 + (spreadAngle / (bulletCount-1)) * i + Math.PI/2;
             const bullet = new EnemyBullet(
                 this.x + this.width/2,
                 this.y + this.height/2,
-                Math.cos(angle) * 5,
-                Math.sin(angle) * 5,
+                Math.cos(angle) * (4 + gameState.difficulty * 0.6), // Scale speed
+                Math.sin(angle) * (4 + gameState.difficulty * 0.6),
                 'spread'
             );
             enemyBullets.push(bullet);
         }
+        AudioController.playOneShot(shootSound); // Boss spread sound (placeholder)
     }
+
 }
 
 class EnemyBullet {
@@ -1062,19 +1184,18 @@ class EnemyBullet {
         this.height = 10;
         this.damage = 1;
         this.lifetime = 0;
+        // Added rotation for drawing consistency
+        this.rotationAngle = Math.atan2(speedY, speedX) + Math.PI / 2;
     }
 
     draw() {
-        // 无敌状态下闪烁效果
-        if (this.isInvincible && this.blinkInterval < 5) {
-            return;
-        }
         ctx.save();
         ctx.translate(this.x, this.y);
+        ctx.rotate(this.rotationAngle);
 
+        // Simplified drawing based on type, centered at 0,0
         switch(this.type) {
             case 'circle':
-                // 圆形子弹
                 const circleGradient = ctx.createRadialGradient(0, 0, 0, 0, 0, this.width/2);
                 circleGradient.addColorStop(0, '#ff88ff');
                 circleGradient.addColorStop(1, '#ff00ff');
@@ -1084,8 +1205,7 @@ class EnemyBullet {
                 ctx.fill();
                 break;
 
-            case 'tracking':
-                // 追踪导弹
+            case 'tracking': // Draw as small missile
                 ctx.fillStyle = '#ff0066';
                 ctx.beginPath();
                 ctx.moveTo(0, -this.height/2);
@@ -1095,50 +1215,350 @@ class EnemyBullet {
                 ctx.fill();
                 break;
 
-            case 'spread':
-                // 散射子弹
+            case 'spread': // Draw as shard
                 const spreadGradient = ctx.createLinearGradient(0, -this.height/2, 0, this.height/2);
                 spreadGradient.addColorStop(0, '#ff00ff');
                 spreadGradient.addColorStop(1, '#880088');
                 ctx.fillStyle = spreadGradient;
-                ctx.fillRect(-this.width/2, -this.height/2, this.width, this.height);
+                ctx.beginPath();
+                ctx.moveTo(0, -this.height/2);
+                ctx.lineTo(this.width/2, this.height/2);
+                ctx.lineTo(-this.width/2, this.height/2);
+                ctx.closePath();
+                ctx.fill();
                 break;
         }
 
         ctx.restore();
     }
 
-    update() {
-        // 更新无敌状态
-        if (this.isInvincible) {
-            this.invincibleTimer++;
-            this.blinkInterval = (this.blinkInterval + 1) % 10;
-            
-            if (this.invincibleTimer >= 120) { // 2秒无敌时间(60fps)
-                this.isInvincible = false;
-                this.invincibleTimer = 0;
-            }
-        }
+     update() {
         this.lifetime++;
-        
+
         if (this.type === 'tracking' && this.lifetime < 120) {
-            // 追踪玩家
+             // Basic tracking logic (can be improved)
             const dx = player.x - this.x;
             const dy = player.y - this.y;
-            const angle = Math.atan2(dy, dx);
-            this.speedX += Math.cos(angle) * 0.1;
-            this.speedY += Math.sin(angle) * 0.1;
-            
-            // 限制最大速度
-            const speed = Math.sqrt(this.speedX * this.speedX + this.speedY * this.speedY);
-            if (speed > 5) {
-                this.speedX = (this.speedX / speed) * 5;
-                this.speedY = (this.speedY / speed) * 5;
+            const angleToPlayer = Math.atan2(dy, dx);
+
+            // Gradually adjust speed towards player
+            const accel = 0.05 + gameState.difficulty * 0.01; // Scale acceleration slightly
+            this.speedX += Math.cos(angleToPlayer) * accel;
+            this.speedY += Math.sin(angleToPlayer) * accel;
+
+            // Limit max speed
+            const maxSpeed = 4 + gameState.difficulty * 0.5; // Scale max speed slightly
+            const currentSpeed = Math.sqrt(this.speedX * this.speedX + this.speedY * this.speedY);
+            if (currentSpeed > maxSpeed) {
+                this.speedX = (this.speedX / currentSpeed) * maxSpeed;
+                this.speedY = (this.speedY / currentSpeed) * maxSpeed;
             }
+            this.rotationAngle = Math.atan2(this.speedY, this.speedX) + Math.PI / 2;
         }
 
         this.x += this.speedX;
         this.y += this.speedY;
+    }
+}
+
+class PowerUp {
+    constructor(x, y, type) {
+        this.x = x;
+        this.y = y;
+        this.type = type;
+        this.width = 30;
+        this.height = 30;
+        this.speed = 2;
+        this.rotation = 0;
+        this.glowIntensity = 0;
+        this.glowDirection = 0.05;
+        this.parachuteColor = this.getParachuteColor();
+    }
+
+     // ... (draw methods for powerup remain the same) ...
+    draw() {
+        // 无敌状态下闪烁效果
+        // if (this.isInvincible && this.blinkInterval < 5) { // Powerups don't have isInvincible
+        //     return;
+        // }
+        ctx.save();
+        ctx.translate(this.x + this.width/2, this.y + this.height/2);
+
+        // 光晕效果
+        this.glowIntensity += this.glowDirection;
+        if (this.glowIntensity >= 1 || this.glowIntensity <= 0) {
+            this.glowDirection *= -1;
+        }
+
+        ctx.shadowBlur = 15 + this.glowIntensity * 5;
+        ctx.shadowColor = this.getColor();
+
+        // 绘制降落伞和连接线
+        this.drawParachute();
+
+        // 绘制物资包
+        ctx.save();
+        // 创建圆形裁剪区域
+        ctx.beginPath();
+        ctx.arc(0, 0, this.width/2, 0, Math.PI * 2);
+        ctx.clip();
+
+        // 手绘物资包
+        switch(this.type) {
+            case 'health':
+                this.drawHealthPack();
+                break;
+            case 'weapon':
+                this.drawWeaponPack();
+                break;
+            case 'shield':
+                this.drawShieldPack();
+                break;
+        }
+
+        // 添加边框和光晕效果
+        ctx.strokeStyle = this.getColor();
+        ctx.lineWidth = 2;
+        // Draw stroke inside clip path
+        ctx.beginPath();
+        ctx.arc(0, 0, this.width/2 -1, 0, Math.PI * 2); // Slightly smaller radius for stroke
+        ctx.stroke();
+
+
+        // 添加内部纹理
+        this.drawPackageTexture();
+
+        ctx.restore(); // Restore from clip
+        ctx.restore(); // Restore from translate
+    }
+    drawHealthPack() {
+        // 医疗包背景
+        const gradient = ctx.createRadialGradient(0, 0, 0, 0, 0, this.width/2);
+        gradient.addColorStop(0, '#ffeeee');
+        gradient.addColorStop(1, '#ff4444');
+        ctx.fillStyle = gradient;
+        // Fill the clipped circle
+        ctx.beginPath();
+        ctx.arc(0,0, this.width/2, 0, Math.PI*2);
+        ctx.fill();
+
+
+        // 十字标志
+        ctx.beginPath();
+        ctx.moveTo(-this.width/4, 0);
+        ctx.lineTo(this.width/4, 0);
+        ctx.moveTo(0, -this.width/4);
+        ctx.lineTo(0, this.width/4);
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 4;
+        ctx.stroke();
+    }
+
+    drawWeaponPack() {
+        // 武器包背景
+        const gradient = ctx.createRadialGradient(0, 0, 0, 0, 0, this.width/2);
+        gradient.addColorStop(0, '#eeffee');
+        gradient.addColorStop(1, '#44ff44');
+        ctx.fillStyle = gradient;
+        // Fill the clipped circle
+        ctx.beginPath();
+        ctx.arc(0,0, this.width/2, 0, Math.PI*2);
+        ctx.fill();
+
+
+        // 子弹图标 (Simplified)
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        // Simple arrow/bullet shape
+        ctx.moveTo(0, -this.height/4);
+        ctx.lineTo(this.width/6, 0);
+        ctx.lineTo(this.width/6, this.height/4);
+        ctx.lineTo(-this.width/6, this.height/4);
+        ctx.lineTo(-this.width/6, 0);
+        ctx.closePath();
+        ctx.fill();
+
+    }
+
+    drawShieldPack() {
+        // 护盾包背景
+        const gradient = ctx.createRadialGradient(0, 0, 0, 0, 0, this.width/2);
+        gradient.addColorStop(0, '#eeeeff');
+        gradient.addColorStop(1, '#4444ff');
+        ctx.fillStyle = gradient;
+         // Fill the clipped circle
+        ctx.beginPath();
+        ctx.arc(0,0, this.width/2, 0, Math.PI*2);
+        ctx.fill();
+
+
+        // 盾牌图标
+        ctx.beginPath();
+        ctx.moveTo(0, -this.height/3);
+        ctx.lineTo(this.width/3, 0);
+        ctx.lineTo(0, this.height/3);
+        ctx.lineTo(-this.width/3, 0);
+        ctx.closePath();
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 3;
+        ctx.stroke();
+    }
+
+    drawPackageTexture() {
+        // 添加反光效果 (Draw inside the clip)
+        const highlight = ctx.createLinearGradient(
+            -this.width/2, -this.height/2,
+            this.width/2, this.height/2
+        );
+        highlight.addColorStop(0, 'rgba(255, 255, 255, 0.2)');
+        highlight.addColorStop(0.5, 'rgba(255, 255, 255, 0)');
+        highlight.addColorStop(1, 'rgba(255, 255, 255, 0.2)');
+
+        ctx.fillStyle = highlight;
+        // Fill the clipped circle
+        ctx.beginPath();
+        ctx.arc(0,0, this.width/2, 0, Math.PI*2);
+        ctx.fill();
+
+    }
+
+     drawParachute() {
+        const parachuteHeight = this.height * 1.5;
+        const parachuteWidth = this.width * 2;
+
+        // 降落伞绳
+        ctx.beginPath();
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
+        ctx.lineWidth = 1;
+
+        // 绘制多根降落伞绳，创造立体感
+        for (let i = 0; i < 6; i++) {
+            const angle = (i / 5 - 0.5) * Math.PI * 0.8; // Adjust angle spread
+            const xOffset = Math.sin(angle) * (this.width/2);
+             const yOffset = Math.cos(angle) * (this.height/2) * 0.5; // Slight vertical offset
+
+            ctx.moveTo(xOffset, yOffset); // Start from edge of package
+            ctx.lineTo(Math.sin(angle) * parachuteWidth/2, -parachuteHeight + 10); // Connect to lower part of canopy
+        }
+        ctx.stroke();
+
+        // 降落伞主体 (Canopy)
+        ctx.beginPath();
+        ctx.moveTo(-parachuteWidth/2, -parachuteHeight + 10);
+        ctx.bezierCurveTo(
+            -parachuteWidth/2, -parachuteHeight - parachuteHeight*0.3, // Control point 1
+             parachuteWidth/2, -parachuteHeight - parachuteHeight*0.3, // Control point 2
+             parachuteWidth/2, -parachuteHeight + 10); // End point
+
+        // 使用物资类型对应的颜色创建渐变
+        const gradient = ctx.createLinearGradient(0, -parachuteHeight - 20, 0, -parachuteHeight + 10);
+        gradient.addColorStop(0, this.parachuteColor);
+        gradient.addColorStop(1, 'rgba(255, 255, 255, 0.3)');
+
+        // 填充降落伞
+        ctx.fillStyle = gradient;
+        ctx.fill();
+
+         // Canopy outline
+        ctx.strokeStyle = this.parachuteColor.replace('0.8', '1'); // Make outline solid color
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+
+        // 降落伞内部纹理
+        ctx.beginPath();
+        for (let i = 1; i < 6; i++) {
+             const x1 = -parachuteWidth/2 + (parachuteWidth/6) * i;
+             const x2 = 0; // Converge towards center top? Let's try vertical lines
+             const y1 = -parachuteHeight + 10;
+             const y2 = -parachuteHeight - 5; // Top point for lines
+
+            // Simple vertical lines for texture
+             ctx.moveTo(x1, y1);
+             ctx.lineTo(x1, y1 - 15); // Draw short vertical lines down from edge
+
+
+        }
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+    }
+     getColor() {
+        switch(this.type) {
+            case 'health': return '#ff4444';
+            case 'weapon': return '#44ff44';
+            case 'shield': return '#4444ff';
+            default: return 'white';
+        }
+    }
+
+    getParachuteColor() {
+        switch(this.type) {
+            case 'health': return 'rgba(255, 68, 68, 0.8)';
+            case 'weapon': return 'rgba(68, 255, 68, 0.8)';
+            case 'shield': return 'rgba(68, 68, 255, 0.8)';
+            default: return 'rgba(255, 255, 255, 0.8)';
+        }
+    }
+
+
+    update() {
+        this.y += this.speed;
+    }
+
+    applyEffect(player) {
+        AudioController.playOneShot(powerUpSound); // Use one-shot for powerups too
+        switch(this.type) {
+            case 'health':
+                if (gameState.lives < gameState.maxLives) {
+                    gameState.lives++;
+                }
+                break;
+            case 'weapon':
+                // --- Updated Weapon Level Logic --- START ---
+                const maxWeaponLevel = 12; // Define the max level before speed increase
+                // Find the current highest possible weapon level based on defined stages
+                const definedMaxLevel = 12; // Corresponds to 5.12 in the list
+                
+                if (gameState.weaponLevel < definedMaxLevel) {
+                    gameState.weaponLevel++;
+                    showWeaponUpgradeEffect(); // Show upgrade text effect
+                } else if (gameState.weaponLevel >= definedMaxLevel) {
+                    // Level 13 and above: Only increase speed, level number doesn't matter beyond triggering speed boost
+                    gameState.weaponLevel++; // Increment level conceptually for speed boost scaling
+                     if (gameState.weaponLevel === definedMaxLevel + 1) {
+                        showWeaponUpgradeEffect(); // Show effect only the first time speed increases
+                     }
+                    console.log("Weapon level maxed, increasing fire rate.");
+                }
+
+                 // Apply speed increase starting from level 13 (definedMaxLevel + 1)
+                 if (gameState.weaponLevel > definedMaxLevel) {
+                     // Calculate speed reduction factor (e.g., 5% faster per level above 12, capped)
+                     const levelsAboveMax = gameState.weaponLevel - definedMaxLevel;
+                     const speedIncreasePercent = Math.min(0.25, levelsAboveMax * 0.05); // Cap speed increase at 25% (5 levels)
+                     const speedIncreaseFactor = 1 - speedIncreasePercent;
+
+                     player.normalShootingSpeed = Math.max(50, player.baseNormalShootingSpeed * speedIncreaseFactor); // Add minimum interval
+                     player.missileShootingSpeed = Math.max(100, player.baseMissileShootingSpeed * speedIncreaseFactor); // Add minimum interval
+                    // console.log(`Shooting speed increased! Norm: ${player.normalShootingSpeed.toFixed(0)}, Missile: ${player.missileShootingSpeed.toFixed(0)}`);
+                 } else {
+                      // Ensure speed resets if level drops below 13 somehow (unlikely)
+                      player.normalShootingSpeed = player.baseNormalShootingSpeed;
+                      player.missileShootingSpeed = player.baseMissileShootingSpeed;
+                 }
+                // --- Updated Weapon Level Logic --- END ---
+                break;
+            case 'shield':
+                if (!gameState.hasShield) {
+                    gameState.hasShield = true;
+                    if (gameState.shieldTimer) clearTimeout(gameState.shieldTimer);
+                    gameState.shieldTimer = setTimeout(() => {
+                        gameState.hasShield = false;
+                    }, 10000); // 10 seconds shield
+                }
+                break;
+        }
     }
 }
 
@@ -1153,12 +1573,12 @@ function spawnPowerUp(x, y) {
     const random = Math.random();
     let type;
     
-    if (random < 0.3) { // 30% 概率为武器升级包
-        type = 'weapon';
-    } else if (random < 0.4) { // 10% 概率为护盾
+    if (random < 0.1) { // 30% 概率为武器升级包
         type = 'shield';
-    } else if (random < 0.5) { // 10% 概率为血包
+    } else if (random < 0.2) { // 10% 概率为护盾
         type = 'health';
+    } else if (random < 0.95) { // 10% 概率为血包
+        type = 'weapon';
     } else { // 50% 概率不生成任何物品
         return; // 如果没有物品生成，则直接返回
     }
@@ -1340,46 +1760,70 @@ let enemySpeedFactor = 1; // 敌人速度因子
 
 // 修改生成敌机的逻辑
 function spawnEnemies() {
-    // 清除之前的定时器（如果存在）
     if (window.enemySpawnTimer) {
         clearInterval(window.enemySpawnTimer);
     }
-    
-    // 创建新的定时器
+
     window.enemySpawnTimer = setInterval(() => {
-        if (isPaused) return;
-        
-        // 如果敌人数量已达到最大值，不再生成
-        if (enemies.length >= maxEnemies) return;
+        if (isPaused || (gameState.bossSpawned && gameState.currentBoss)) return; // Boss存在时不生成普通敌人
 
-        const levelTime = (Date.now() - gameState.levelStartTime) / 1000 / 60;
+        // 计算当前时间难度因子
+        const levelTimeSeconds = (Date.now() - gameState.levelStartTime) / 1000;
+        const timeDifficultyFactor = Math.min(2, 1 + Math.floor(levelTimeSeconds / 30) * 0.1); // 每30秒难度增加10%，上限为基础的2倍
 
-        if (levelTime >= 0.5 && !gameState.bossSpawned) { // 修改为30秒出现（0.5分钟）
-            const x = (canvas.width - 200) / 2; // 适应新的BOSS尺寸
-            // 从画布上方生成BOSS
-            const boss = new Enemy(x, -200, 'boss'); // 从画布上方进入
+        // 动态调整生成间隔和最大数量
+        // 注意：Interval本身不变，我们在回调内部控制是否生成以及生成属性
+        const currentSpawnInterval = Math.max(100, Math.floor(enemySpawnBaseInterval / timeDifficultyFactor)); // 目标间隔，实际由定时器频率决定
+        const currentMaxEnemies = Math.min(30, Math.floor(maxEnemies * timeDifficultyFactor)); // 最多30个敌人
+
+
+        // 动态调整快速敌人概率 (关卡和时间共同影响)
+        const fastEnemyBaseChance = 0.2 + (gameState.level - 1) * 0.05; // 关卡基础概率
+        const fastEnemyTimeBonus = Math.min(0.3, Math.floor(levelTimeSeconds / 60) * 0.05); // 每分钟增加5%概率，上限30%
+        const fastEnemyChance = Math.min(0.8, fastEnemyBaseChance + fastEnemyTimeBonus); // 最终概率，上限80%
+
+
+        // 更新定时器间隔 (如果需要更频繁的调整) - 不推荐频繁修改Interval
+        // if (newInterval !== currentInterval) { ... }
+
+        // 控制生成频率：可以通过随机数模拟更短的间隔
+        // 例如，如果目标间隔是基础间隔的一半，那就在每次基础间隔触发时有50%概率再生成一个
+        // 简化处理：我们依赖定时器基础间隔，但在内部通过 maxEnemies 和敌人属性增加难度
+
+        if (enemies.length >= currentMaxEnemies) return; // 检查动态最大数量
+
+        // Boss 生成逻辑 (保持基本不变，但基于 levelStartTime)
+        if (levelTimeSeconds >= 30 && !gameState.bossSpawned) {
+            const x = (canvas.width - 200) / 2;
+            const boss = new Enemy(x, -200, 'boss');
             enemies.push(boss);
             gameState.currentBoss = boss;
             gameState.bossSpawned = true;
-            return;
+            console.log(`Boss spawned for level ${gameState.level}!`);
+            return; // Boss生成后，本次不再生成普通敌人
         }
-
-        // 如果BOSS已经生成，暂停生成普通敌人
-        if (gameState.bossSpawned && gameState.currentBoss) return;
 
         // 生成普通敌机
         const x = Math.random() * (canvas.width - 50);
         const random = Math.random();
-        
-        // 根据游戏难度调整快速敌机的生成概率
-        const fastEnemyChance = 0.2 + (gameState.level - 1) * 0.05; // 每关增加5%的快速敌机概率
-        
+
+        let enemyType = 'normal'; // 默认类型
         if (random < fastEnemyChance) {
-            enemies.push(new Enemy(x, -50, 'fast'));
-        } else {
-            enemies.push(new Enemy(x, -50, 'normal'));
+             enemyType = 'fast';
         }
-    }, enemySpawnInterval); // 使用动态间隔时间
+        // --- 未来添加新敌人类型的逻辑可以放在这里 ---
+        // else if (random < fastEnemyChance + shooterChance && gameState.level >= 2) { // 假设 shooter 在第2关解锁
+        //     enemyType = 'shooter';
+        // }
+        // else if (random < fastEnemyChance + shooterChance + tankChance && gameState.level >= 3) { // 假设 tank 在第3关解锁
+        //     enemyType = 'tank';
+        // }
+
+        enemies.push(new Enemy(x, -50, enemyType));
+
+    }, enemySpawnBaseInterval); // 定时器仍然使用基础间隔，内部逻辑进行动态调整
+
+    console.log(`Enemy spawner started/updated. Base interval: ${enemySpawnBaseInterval}ms`);
 }
 
 // 修改碰撞检测函数
@@ -1626,45 +2070,44 @@ createPauseButton();
 // 添加进入下一关的函数
 function startNextLevel() {
     gameState.level++;
-    gameState.bossSpawned = false;
-    gameState.levelStartTime = Date.now();
-    gameState.currentBoss = null;
-    
-    // 增加难度
-    increaseGameDifficulty();
-    
-    // 重新设置敌人生成计时器
-    spawnEnemies();
-    
-    // 显示过关信息
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.fillStyle = '#44ff44';
-    ctx.font = '36px Arial';
-    ctx.textAlign = 'center';
-    ctx.fillText(`第 ${gameState.level - 1} 关完成！`, canvas.width/2, canvas.height/2 - 40);
-    ctx.font = '24px Arial';
-    ctx.fillText(`准备进入第 ${gameState.level} 关`, canvas.width/2, canvas.height/2 + 20);
+    console.log(`进入下一关: ${gameState.level}`);
+    // 不再需要手动重置 levelStartTime 和 bossSpawned，increaseGameDifficulty会做
+    increaseGameDifficulty(); // 更新难度参数并重启生成器
+    // 可选：添加关卡过渡效果或提示
+
+    // 显示下一关提示
+    showLevelIndicator(`第 ${gameState.level} 关`);
 }
 
 // 添加增加游戏难度的函数
 function increaseGameDifficulty() {
-    const difficultyFactor = 1 + (0.2 * (gameState.level - 1)); // 每级难度增加20%
-    
-    // 设置敌人基础生命值
-    Enemy.prototype.baseHealth = Math.ceil(1 * difficultyFactor);
-    Enemy.prototype.bossBaseHealth = Math.ceil(1000 * difficultyFactor);
-    
-    // 减少敌人生成间隔（更快地生成敌人）
-    enemySpawnInterval = Math.max(30, Math.floor(enemySpawnBaseInterval / difficultyFactor));
-    
-    // 增加敌人最大数量
-    maxEnemies = Math.min(15, Math.floor(10 * difficultyFactor));
-    
-    // 增加敌人速度
-    enemySpeedFactor = 1 + (0.15 * (gameState.level - 1)); // 每级敌人速度增加15%
-    
-    console.log(`难度已增加到级别${gameState.level}：敌人生命=${Enemy.prototype.baseHealth}，BOSS生命=${Enemy.prototype.bossBaseHealth}，生成间隔=${enemySpawnInterval}，最大敌人数=${maxEnemies}`);
+    // 计算关卡基础难度因子
+    // *** Increase per-level difficulty increment from 0.15 to 0.25 ***
+    gameState.difficulty = 1 + 0.75 * (gameState.level - 1);
+
+    // 基础敌人生成间隔（后续在生成时结合时间难度因子计算）
+    enemySpawnBaseInterval = Math.max(200, Math.floor(1000 / gameState.difficulty)); // 基础生成间隔随关卡缩短，最低200ms
+
+    // 基础最大敌人数量（后续在生成时结合时间难度因子计算）
+    maxEnemies = Math.min(20, Math.floor(10 * gameState.difficulty)); // 基础最大数量随关卡增加，最高20个
+
+    // 基础敌人速度因子（后续在生成时结合时间难度因子计算）
+    enemySpeedFactor = 1 + 0.1 * (gameState.level - 1); // 基础速度随关卡增加，每级+10%
+
+    console.log(`关卡 ${gameState.level} 开始：基础难度因子=${gameState.difficulty.toFixed(2)}，基础生成间隔=${enemySpawnBaseInterval}，基础最大数量=${maxEnemies}，基础速度因子=${enemySpeedFactor.toFixed(2)}`);
+
+    // 重置关卡开始时间，用于计算时间难度
+    gameState.levelStartTime = Date.now();
+    // 重置Boss生成状态
+    gameState.bossSpawned = false;
+    gameState.currentBoss = null;
+
+    // 清理上一关可能残留的敌人和子弹 (可选，但推荐)
+    enemies = [];
+    enemyBullets = [];
+
+    // 重新启动敌人生成计时器，使用更新后的基础间隔
+    spawnEnemies();
 }
 
 // 添加武器升级特效
@@ -1688,264 +2131,6 @@ function showWeaponUpgradeEffect() {
     ctx.textBaseline = 'middle';
     ctx.fillText(text, x, y);
     ctx.restore();
-}
-
-// 添加PowerUp类
-class PowerUp {
-    constructor(x, y, type) {
-        this.x = x;
-        this.y = y;
-        this.type = type;
-        this.width = 30;
-        this.height = 30;
-        this.speed = 2;
-        this.rotation = 0;
-        this.glowIntensity = 0;
-        this.glowDirection = 0.05;
-        this.parachuteColor = this.getParachuteColor();
-    }
-
-    draw() {
-        // 无敌状态下闪烁效果
-        if (this.isInvincible && this.blinkInterval < 5) {
-            return;
-        }
-        ctx.save();
-        ctx.translate(this.x + this.width/2, this.y + this.height/2);
-        
-        // 不再旋转资源包
-        // this.rotation += 0.02;
-        // ctx.rotate(this.rotation);
-
-        // 光晕效果
-        this.glowIntensity += this.glowDirection;
-        if (this.glowIntensity >= 1 || this.glowIntensity <= 0) {
-            this.glowDirection *= -1;
-        }
-        
-        ctx.shadowBlur = 15 + this.glowIntensity * 5;
-        ctx.shadowColor = this.getColor();
-
-        // 绘制降落伞和连接线
-        this.drawParachute();
-
-        // 绘制物资包
-        ctx.save();
-        // 创建圆形裁剪区域
-        ctx.beginPath();
-        ctx.arc(0, 0, this.width/2, 0, Math.PI * 2);
-        ctx.clip();
-        
-        // 手绘物资包
-        switch(this.type) {
-            case 'health':
-                this.drawHealthPack();
-                break;
-            case 'weapon':
-                this.drawWeaponPack();
-                break;
-            case 'shield':
-                this.drawShieldPack();
-                break;
-        }
-
-        // 添加边框和光晕效果
-        ctx.strokeStyle = this.getColor();
-        ctx.lineWidth = 2;
-        ctx.stroke();
-
-        // 添加内部纹理
-        this.drawPackageTexture();
-
-        ctx.restore();
-        ctx.restore();
-    }
-
-    drawHealthPack() {
-        // 医疗包背景
-        const gradient = ctx.createRadialGradient(0, 0, 0, 0, 0, this.width/2);
-        gradient.addColorStop(0, '#ffeeee');
-        gradient.addColorStop(1, '#ff4444');
-        ctx.fillStyle = gradient;
-        ctx.fill();
-
-        // 十字标志
-        ctx.beginPath();
-        ctx.moveTo(-this.width/4, 0);
-        ctx.lineTo(this.width/4, 0);
-        ctx.moveTo(0, -this.width/4);
-        ctx.lineTo(0, this.width/4);
-        ctx.strokeStyle = '#ffffff';
-        ctx.lineWidth = 4;
-        ctx.stroke();
-    }
-
-    drawWeaponPack() {
-        // 武器包背景
-        const gradient = ctx.createRadialGradient(0, 0, 0, 0, 0, this.width/2);
-        gradient.addColorStop(0, '#eeffee');
-        gradient.addColorStop(1, '#44ff44');
-        ctx.fillStyle = gradient;
-        ctx.fill();
-
-        // 子弹图标
-        ctx.beginPath();
-        ctx.moveTo(-this.width/4, -this.height/4);
-        ctx.lineTo(this.width/4, this.height/4);
-        ctx.moveTo(this.width/4, -this.height/4);
-        ctx.lineTo(-this.width/4, this.height/4);
-        ctx.strokeStyle = '#ffffff';
-        ctx.lineWidth = 3;
-        ctx.stroke();
-
-        // 中心点
-        ctx.beginPath();
-        ctx.arc(0, 0, this.width/8, 0, Math.PI * 2);
-        ctx.fillStyle = '#ffffff';
-        ctx.fill();
-    }
-
-    drawShieldPack() {
-        // 护盾包背景
-        const gradient = ctx.createRadialGradient(0, 0, 0, 0, 0, this.width/2);
-        gradient.addColorStop(0, '#eeeeff');
-        gradient.addColorStop(1, '#4444ff');
-        ctx.fillStyle = gradient;
-        ctx.fill();
-
-        // 盾牌图标
-        ctx.beginPath();
-        ctx.moveTo(0, -this.height/3);
-        ctx.lineTo(this.width/3, 0);
-        ctx.lineTo(0, this.height/3);
-        ctx.lineTo(-this.width/3, 0);
-        ctx.closePath();
-        ctx.strokeStyle = '#ffffff';
-        ctx.lineWidth = 3;
-        ctx.stroke();
-    }
-
-    drawPackageTexture() {
-        // 添加反光效果
-        const highlight = ctx.createLinearGradient(
-            -this.width/2, -this.height/2,
-            this.width/2, this.height/2
-        );
-        highlight.addColorStop(0, 'rgba(255, 255, 255, 0.2)');
-        highlight.addColorStop(0.5, 'rgba(255, 255, 255, 0)');
-        highlight.addColorStop(1, 'rgba(255, 255, 255, 0.2)');
-        
-        ctx.fillStyle = highlight;
-        ctx.fill();
-    }
-
-    drawParachute() {
-        const parachuteHeight = this.height * 1.5;
-        const parachuteWidth = this.width * 2;
-        
-        // 降落伞绳
-        ctx.beginPath();
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
-        ctx.lineWidth = 1;
-        
-        // 绘制多根降落伞绳，创造立体感
-        for (let i = 0; i < 6; i++) {
-            const angle = (i / 6) * Math.PI;
-            const xOffset = Math.cos(angle) * (this.width/2);
-            ctx.moveTo(xOffset, 0);
-            ctx.lineTo(Math.cos(angle) * parachuteWidth/2, -parachuteHeight);
-        }
-        ctx.stroke();
-        
-        // 降落伞主体
-        ctx.beginPath();
-        ctx.moveTo(-parachuteWidth/2, -parachuteHeight);
-        ctx.quadraticCurveTo(0, -parachuteHeight - 20, parachuteWidth/2, -parachuteHeight);
-        
-        // 使用物资类型对应的颜色创建渐变
-        const gradient = ctx.createLinearGradient(0, -parachuteHeight - 20, 0, -parachuteHeight + 10);
-        gradient.addColorStop(0, this.parachuteColor);
-        gradient.addColorStop(1, 'rgba(255, 255, 255, 0.3)');
-        
-        ctx.strokeStyle = this.parachuteColor;
-        ctx.lineWidth = 2;
-        ctx.stroke();
-        
-        // 填充降落伞
-        ctx.fillStyle = gradient;
-        ctx.fill();
-        
-        // 降落伞内部纹理
-        ctx.beginPath();
-        for (let i = 1; i < 6; i++) {
-            const x = -parachuteWidth/2 + (parachuteWidth/6) * i;
-            ctx.moveTo(x, -parachuteHeight);
-            ctx.lineTo(x - 5, -parachuteHeight + 15);
-        }
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
-        ctx.lineWidth = 1;
-        ctx.stroke();
-    }
-
-    getColor() {
-        switch(this.type) {
-            case 'health': return '#ff4444';
-            case 'weapon': return '#44ff44';
-            case 'shield': return '#4444ff';
-            default: return 'white';
-        }
-    }
-
-    getParachuteColor() {
-        switch(this.type) {
-            case 'health': return 'rgba(255, 68, 68, 0.8)';
-            case 'weapon': return 'rgba(68, 255, 68, 0.8)';
-            case 'shield': return 'rgba(68, 68, 255, 0.8)';
-            default: return 'rgba(255, 255, 255, 0.8)';
-        }
-    }
-
-    update() {
-        // 更新无敌状态
-        if (this.isInvincible) {
-            this.invincibleTimer++;
-            this.blinkInterval = (this.blinkInterval + 1) % 10;
-            
-            if (this.invincibleTimer >= 120) { // 2秒无敌时间(60fps)
-                this.isInvincible = false;
-                this.invincibleTimer = 0;
-            }
-        }
-        this.y += this.speed;
-    }
-
-    applyEffect(player) {
-        powerUpSound.play();
-        switch(this.type) {
-            case 'health':
-                if (gameState.lives < gameState.maxLives) {
-                    gameState.lives++;
-                }
-                break;
-            case 'weapon':
-                if (gameState.weaponLevel < 8) {
-                    gameState.weaponLevel++;
-                    // 添加武器升级提示
-                    showWeaponUpgradeEffect();
-                }
-                break;
-            case 'shield':
-                if (!gameState.hasShield) {
-                    gameState.hasShield = true;
-                    // 设置护盾持续时间
-                    if (gameState.shieldTimer) clearTimeout(gameState.shieldTimer);
-                    gameState.shieldTimer = setTimeout(() => {
-                        gameState.hasShield = false;
-                    }, 10000); // 10秒后护盾消失
-                }
-                break;
-        }
-    }
 }
 
 // 添加游戏结束函数
@@ -1980,46 +2165,114 @@ function gameOver() {
     const restartHandler = (e) => {
         if (e.code === 'Space') {
             window.removeEventListener('keydown', restartHandler);
-            resetGame();
-            isPaused = false;
-            gameLoop();
+            resetGame(); // resetGame now handles starting the loop implicitly
         }
     };
+    // Debounce or ensure handler isn't added multiple times
+    window.removeEventListener('keydown', restartHandler); // Remove previous if any
     window.addEventListener('keydown', restartHandler);
 }
 
 // 添加重置游戏函数
 function resetGame() {
+    // Stop existing game loop if running
+    if (animationId) {
+        cancelAnimationFrame(animationId);
+        animationId = null;
+    }
+    // Stop enemy spawn timer
+    if (window.enemySpawnTimer) {
+        clearInterval(window.enemySpawnTimer);
+        window.enemySpawnTimer = null;
+    }
+
     // 重置游戏状态
     gameState = {
         level: 1,
         score: 0,
         lives: 3,
         maxLives: 5,
-        difficulty: 1,
+        difficulty: 1, // 初始难度因子
         powerUpActive: false,
         powerUpTimer: null,
-        weaponLevel: 1,
+        weaponLevel: 1, // Start at weapon level 1
         hasShield: false,
         shieldTimer: null,
-        levelStartTime: Date.now(),
+        levelStartTime: Date.now(), // 初始化关卡开始时间
         bossSpawned: false,
         currentBoss: null
     };
-    
+
     // 清空所有数组
     bullets = [];
     enemies = [];
     powerUps = [];
     enemyBullets = [];
-    
-    // 重置玩家位置
-    player.x = canvas.width / 2 - 25;
+
+    // 重置玩家位置和状态
+    player.x = canvas.width / 2;
     player.y = canvas.height - 100;
-    player.normalShootingSpeed = 350;
-    player.missileShootingSpeed = 700;
-    
+    // Reset shooting speeds to base values
+    player.normalShootingSpeed = player.baseNormalShootingSpeed;
+    player.missileShootingSpeed = player.baseMissileShootingSpeed;
+    player.isInvincible = false; // 确保不是无敌状态
+    player.invincibleTimer = 0;
+
+    // *** 设置初始难度并启动生成 ***
+    increaseGameDifficulty(); // This also calls spawnEnemies()
+
     // 重新开始背景音乐
+    AudioController.stopAll(); // Ensure all old sounds stopped
     backgroundMusic.currentTime = 0;
     backgroundMusic.play().catch(e => console.error('背景音乐播放失败:', e));
+
+    // 确保游戏不是暂停状态
+    isPaused = false;
+    if (pauseButton) pauseButton.textContent = '暂停';
+    // Hide menus
+    const pauseMenu = document.getElementById('pause-menu'); // Assuming IDs exist
+    const gameOverMenu = document.getElementById('game-over-menu');
+    if (pauseMenu) pauseMenu.style.display = 'none';
+    if (gameOverMenu) gameOverMenu.style.display = 'none';
+
+    hideLevelIndicator();
+
+    // Start the game loop ONLY if it's not already running from a previous call
+     if (!animationId) {
+        gameLoop();
+     }
+}
+
+// 添加用于显示和隐藏关卡指示器的函数
+let levelIndicatorTimeout = null; // 用于存储隐藏指示器的定时器
+
+function showLevelIndicator(text) {
+    const indicator = document.getElementById('levelIndicator');
+    if (!indicator) return; // 如果元素不存在则退出
+
+    indicator.textContent = text;
+    indicator.style.display = 'block'; // 显示元素
+
+    // 清除之前的隐藏定时器（如果存在）
+    if (levelIndicatorTimeout) {
+        clearTimeout(levelIndicatorTimeout);
+    }
+
+    // 设置定时器，在 2 秒后隐藏指示器
+    levelIndicatorTimeout = setTimeout(() => {
+        hideLevelIndicator();
+    }, 2000); // 显示 2 秒
+}
+
+function hideLevelIndicator() {
+    const indicator = document.getElementById('levelIndicator');
+    if (!indicator) return; // 如果元素不存在则退出
+
+    indicator.style.display = 'none'; // 隐藏元素
+
+    // 清除定时器（如果它正在运行）
+    if (levelIndicatorTimeout) {
+        clearTimeout(levelIndicatorTimeout);
+        levelIndicatorTimeout = null;
+    }
 }
